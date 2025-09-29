@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import traceback
 from ssl import SOL_SOCKET
 
 from _socket import inet_aton, SO_REUSEADDR, SOCK_DGRAM, SO_BROADCAST
@@ -437,6 +438,8 @@ class DHCPServer(object):
                 data = packet.to_bytes()
                 broadcast_socket.sendto(data, ('255.255.255.255', 68))
                 broadcast_socket.sendto(data, (addr, 68))
+            except:
+                self.configuration.debug(traceback.format_exc())
             finally:
                 broadcast_socket.close()
 
