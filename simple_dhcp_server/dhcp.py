@@ -7,7 +7,7 @@ from _socket import inet_aton, SO_REUSEADDR, SOCK_DGRAM, SO_BROADCAST
 from simple_dhcp_server.decoders import WriteBootProtocolPacket, ReadBootProtocolPacket, get_host_ip_addresses
 from scapy.all import *
 
-from simple_dhcp_server.utils import get_interface_by_ip
+from simple_dhcp_server.utils import get_interface_by_ip, ether_client_id
 
 
 class DelayWorker(object):
@@ -91,7 +91,13 @@ class Transaction(object):
         offer.client_ip_address = discovery.client_ip_address or '0.0.0.0'
         offer.bootp_flags = discovery.bootp_flags
         offer.dhcp_message_type = 'DHCPOFFER'
-        offer.client_identifier = mac
+
+        cid = getattr(discovery, 'client_identifier', None)
+        if cid:
+            offer.client_identifier = cid
+        else:
+            offer.client_identifier = ether_client_id(mac)
+
         self.server.broadcast(offer)
 
     def received_dhcp_request(self, request):
@@ -113,6 +119,13 @@ class Transaction(object):
         ack.client_ip_address = request.client_ip_address or '0.0.0.0'
         ack.your_ip_address = self.server.get_ip_address(request)
         ack.dhcp_message_type = 'DHCPACK'
+
+        cid = getattr(request, 'client_identifier', None)
+        if cid:
+            ack.client_identifier = cid
+        else:
+            ack.client_identifier = ether_client_id(mac)
+
         self.server.broadcast(ack)
 
     def received_dhcp_inform(self, inform):

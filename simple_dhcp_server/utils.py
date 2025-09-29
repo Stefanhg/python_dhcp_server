@@ -20,3 +20,12 @@ def get_interface_by_ip(ip_address):
             if addr.family == socket.AF_INET and addr.address == ip_address:
                 return iface
     return None
+
+
+def mac_bytes(mac: str) -> bytes:
+    return bytes.fromhex(mac.replace(':', ''))
+
+
+def ether_client_id(mac: str) -> bytes:
+    # RFC 2132: type 1 (Ethernet) + 6 bytes MAC
+    return bytes([0x01]) + mac_bytes(mac)

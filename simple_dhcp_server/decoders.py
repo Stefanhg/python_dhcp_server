@@ -126,7 +126,8 @@ options = [
     ('renewal_time_value', None, None),
     ('rebinding_time_value', None, None),
     ('vendor_class_identifier', None, None),
-    ('client_identifier', macunpack, macpack),
+    # RFC 2132/4361: client-identifier is opaque bytes; do NOT assume MAC length/format.
+    ('client_identifier', (lambda d: d), (lambda b: b)),
     ('tftp_server_name', None, None),
     ('boot_file_name', None, None),
     # Application and Service Parameters Part 2
@@ -169,7 +170,7 @@ class ReadBootProtocolPacket(object):
         self.XID = self.transaction_id = struct.unpack('>I', data[4:8])[0]
 
         self.seconds_elapsed = self.SECS = shortunpack(data[8:10])
-        self.bootp_flags = self.FLAGS = shortunpack(data[8:10])
+        self.bootp_flags = self.FLAGS = shortunpack(data[10:12])
 
         self.client_ip_address = self.CIADDR = inet_ntoa(data[12:16])
         self.your_ip_address = self.YIADDR = inet_ntoa(data[16:20])
