@@ -26,7 +26,7 @@ print("cwd", CWD, file=f)
 os.chdir(str(CWD))
 
 try:
-    from simple_dhcp_server.tk import main
+    from simple_dhcp_server.gui.tk import main
     main()
 except:
     import traceback
