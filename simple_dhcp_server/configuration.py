@@ -52,7 +52,12 @@ class DHCPServerConfiguration(object):
                 # self.perform_mask_discovery = True
 
     def all_ip_addresses(self):
+        """
+        Generator for all IP addresses in the configured network, skipping the first 5 addresses.
+        """
         ips = ip_addresses(self.network, self.subnet_mask)
+
+        # Skip the first 5 addresses (network address, router, DHCP server, and two reserved addresses)
         for i in range(5):
             next(ips)
         return ips

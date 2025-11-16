@@ -15,8 +15,7 @@ from simple_dhcp_server.delay_worker import DelayWorker
 from simple_dhcp_server.host_database import HostDatabase, Host
 from simple_dhcp_server.log import log
 from simple_dhcp_server.transaction import Transaction
-from simple_dhcp_server.utils import get_interface_by_ip, ether_client_id
-
+from simple_dhcp_server.utils import get_interface_by_ip, ether_client_id, sorted_hosts, GREATER
 
 
 class DHCPServer(object):
@@ -84,17 +83,35 @@ class DHCPServer(object):
             log.debug(traceback.format_exc())
 
     def received(self, packet):
+        """
+        Handle a received DHCP packet.
+        """
         if not self.transactions[packet.transaction_id].receive(packet):
             log.debug('received:\n {}'.format(str(packet).replace('\n', '\n\t')))
 
     def client_has_chosen(self, packet):
+        """
+        Update the host database when a client has chosen an IP address.
+        """
         log.debug('client_has_chosen:\n {}'.format(str(packet).replace('\n', '\n\t')))
         host = Host.from_packet(packet)
         if not host.has_valid_ip():
             return
         self.hosts.replace(host)
 
-    def is_valid_client_address(self, address):
+    def is_valid_client_address(self, address: None | str):
+        """
+        Check if the given address is a valid client address within the configured network.
+        Parameters
+        ----------
+        address : str
+            The IP address to check.
+            If None, returns False.
+        Returns
+        -------
+        bool :
+            True if the address is valid for a client, False otherwise.
+        """
         if address is None:
             return False
         a = address.split('.')
@@ -103,6 +120,22 @@ class DHCPServer(object):
         return all(s[i] == '0' or a[i] == n[i] for i in range(4))
 
     def get_ip_address(self, packet):
+        """
+        Determine the IP address to assign to the client based on the packet and known hosts.
+        Parameters
+        ----------
+        packet : str
+            The DHCP packet received from the client.
+
+        Returns
+        -------
+        str :
+            The IP address to assign to the client.
+            1. If the client is known, choose its known IP address.
+            2. If the client requested a valid IP address, choose that.
+            3. Choose a new, free IP address from the pool.
+            4. If no free IP addresses are available, reuse the oldest valid IP address.
+        """
         mac_address = packet.client_mac_address
         requested_ip_address = packet.requested_ip_address
         known_hosts = self.hosts.get(mac=mac_address)
