@@ -47,7 +47,7 @@ class NicControl:
         subprocess.run(['ipconfig', '/release', self.nic_name], check=True)
         print("Released IP for NIC: {}".format(self.nic_name))
 
-    def wait_ip_assigned(self, timeout=10):
+    def wait_ip_assigned(self, timeout: float = 10):
         start_time = time.time()
         while time.time() - start_time < timeout:
             ip = self.get_current_ip()
@@ -79,6 +79,7 @@ def dhcp():
     logger.addHandler(handler)
 
     inst.start()
+    inst.hosts.delete_all()
     yield inst
     inst.close()
 
@@ -92,6 +93,38 @@ def test_assign_ip(dhcp, nic_control):
     assert assigned_ip.startswith('192.168.137.')
 
 
-def test_dhcp_release_assinged_ip():
+def test_dhcp_release_assinged_ip(dhcp, nic_control):
     """Test that the DHCP server can release an assigned IP"""
-    pass
+    nic_control.release()
+    nic_control.renew()
+    assigned_ip = nic_control.wait_ip_assigned(timeout=15)
+    print("Assigned IP: {}".format(assigned_ip))
+
+    dhcp.release_ip(assigned_ip)
+    with pytest.raises(AssertionError):
+        res = nic_control.wait_ip_assigned(timeout=0.5)
+        print("IP assigned after release: {}".format(res))
+    assert res != assigned_ip, "IP should not be assigned after release"
+
+
+def test_release_clear_host(dhcp, nic_control):
+    """Test that when a DHCPRELEASE packet is received, the host is cleared"""
+    nic_control.release()
+    nic_control.renew()
+
+    # Check that at least one is connected
+    assert len(dhcp.hosts.all()) == 1
+    nic_control.release()
+    # When NIC releases, it triggers a DHCPRELEASE packet sent to the DHCP server.
+    # Then inside the Transaction class, it clears the item from DHCP.
+
+    assert len(dhcp.hosts.all()) == 0
+
+
+def test_re_lease(dhcp, nic_control):
+    """Test that after leasing period """
+    nic_control.release()
+    nic_control.renew()
+    nic_control.release()
+    nic_control.renew()
+

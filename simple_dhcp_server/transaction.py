@@ -31,6 +31,8 @@ class Transaction(object):
                           self.received_dhcp_request, (packet,), )
         elif packet.message_type == 1 and packet.dhcp_message_type == 'DHCPINFORM':
             self.received_dhcp_inform(packet)
+        elif packet.message_type == 1 and packet.dhcp_message_type == 'DHCPRELEASE':
+            self.received_dhcp_release(packet)
         else:
             return False
         return True
@@ -95,3 +97,13 @@ class Transaction(object):
     def received_dhcp_inform(self, inform):
         self.close()
         self.server.client_has_chosen(inform)
+
+    def received_dhcp_release(self, packet):
+        if self.is_done():
+            return
+        log.debug(f"Received DHCPRELEASE for IP {packet.client_ip_address}")
+        self.server.hosts.delete(
+            mac=packet.client_mac_address,
+            ip=packet.client_ip_address
+        )
+        self.close()

@@ -107,3 +107,8 @@ class HostDatabase(object):
     def replace(self, host):
         self.delete(host)
         self.add(host)
+
+    def delete_all(self):
+        """Clears all assigned hosts"""
+        for host in self.all():
+            self.delete(host)
