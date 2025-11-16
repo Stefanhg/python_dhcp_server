@@ -3,20 +3,31 @@ from simple_dhcp_server.utils import NETWORK, ip_addresses
 
 
 class DHCPServerConfiguration(object):
-    dhcp_offer_after_seconds = 10
-    dhcp_acknowledge_after_seconds = 10
+    dhcp_offer_after_seconds = 0
+    """Time to wait before sending DHCPOFFER (in seconds). Can be used to simulate network delay."""
+    dhcp_acknowledge_after_seconds = 0
+    """Time to wait before sending DHCPACK (in seconds). Can be used to simulate network delay."""
     length_of_transaction = 40
+    """Length of transaction in seconds. If no progress is made in this time, the transaction is removed."""
 
     bind_address = ''
+    """IP address to bind the DHCP server to. If empty, binds to all interfaces."""
     network = '192.168.173.0'
+    """Network address. Used to determine the range of IP addresses to assign."""
     broadcast_address = '255.255.255.255'
+    """Broadcast address."""
     subnet_mask = '255.255.255.0'
-    router = None  # list of ips
+    """Subnet mask."""
+    router = None
+    """Router (default gateway) IP address(es). If None, no router is provided."""
     # 1 day is 86400
     ip_address_lease_time = 300  # seconds
-    domain_name_server = None  # list of ips
+    """IP address lease time in seconds."""
+    domain_name_server = None
+    """Domain Name Server (DNS) IP address(es). If None, no DNS is provided."""
 
     host_file = 'hosts.csv'
+    """Path to the host database file."""
 
     def load(self, file):
         with open(file) as f:
