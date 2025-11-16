@@ -91,3 +91,7 @@ def test_assign_ip(dhcp, nic_control):
     assert assigned_ip is not None
     assert assigned_ip.startswith('192.168.137.')
 
+
+def test_dhcp_release_assinged_ip():
+    """Test that the DHCP server can release an assigned IP"""
+    pass

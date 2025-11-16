@@ -1,8 +1,9 @@
 #!/usr/bin/python3
-import sys
 import os
 
-from simple_dhcp_server.dhcp import *
+from simple_dhcp_server.configuration import DHCPServerConfiguration
+from simple_dhcp_server.dhcp import DHCPServer
+
 try:
     from tkinter import *
     from tkinter.messagebox import showerror
@@ -15,6 +16,7 @@ except ImportError:
 HERE = os.path.dirname(__file__) or "."
 
 THIS_CONFIG = 'simple-dhcp-server-tk.conf'
+
 
 def main():
     """Create a GUI window and the DHCP server from a possible file."""
@@ -38,9 +40,9 @@ def main():
 
     # Text Widget
     info_text = Text(root, wrap=NONE, height=12, width=80,
-                    xscrollcommand=xscrollbar.set,
-                    yscrollcommand=yscrollbar.set)
-    info_text.pack(fill=BOTH, expand = True)
+                     xscrollcommand=xscrollbar.set,
+                     yscrollcommand=yscrollbar.set)
+    info_text.pack(fill=BOTH, expand=True)
 
     # Configure the scrollbars
     xscrollbar.config(command=info_text.xview)
@@ -48,7 +50,7 @@ def main():
 
     configuration = DHCPServerConfiguration()
     configuration.debug = print
-    #configuration.adjust_if_this_computer_is_a_router()
+    # configuration.adjust_if_this_computer_is_a_router()
     config_file = os.path.join(HERE, THIS_CONFIG)
     if not os.path.exists(THIS_CONFIG):
         with open(THIS_CONFIG, "w") as f:
@@ -67,19 +69,20 @@ def main():
     for i, yellow in enumerate("0123456789abcdef"):
         tag = 'yellow_{}'.format(i)
         bg = '#ffff{}{}'.format(yellow, yellow)
-        info_text.tag_config(tag, background = bg)
+        info_text.tag_config(tag, background=bg)
         time_tags.append(tag)
 
     old_tag = 'old'
     info_text.tag_config(old_tag)
 
     last_time_sorted_hosts = None
+
     def update_text():
         nonlocal last_time_sorted_hosts
         root.after(100, update_text)
         hosts = server.get_all_hosts()
         current_hosts = server.get_current_hosts()
-        time_sorted_hosts = list(reversed(sorted(hosts, key = lambda host: host.last_used)))
+        time_sorted_hosts = list(reversed(sorted(hosts, key=lambda host: host.last_used)))
         if last_time_sorted_hosts != time_sorted_hosts:
             text = 'MAC'.center(17) + '  ' + 'IP'.center(15) + '  ' + '  HOST' + '\n'
             headerlines = 1
@@ -92,7 +95,7 @@ def main():
             for time_i, host in enumerate(time_sorted_hosts):
                 text_line = hosts.index(host) + 1 + headerlines
                 start = "{}.0".format(text_line)
-                stop  = "{}.0".format(text_line + 1)
+                stop = "{}.0".format(text_line + 1)
                 if host in current_hosts:
                     tag_index = int(time_i / len(current_hosts) * len(time_tags))
                     info_text.tag_add(time_tags[tag_index], start, stop)
@@ -106,6 +109,7 @@ def main():
     root.mainloop()
 
     server.close()
+
 
 if __name__ == '__main__':
     main()

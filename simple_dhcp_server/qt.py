@@ -1,6 +1,12 @@
 """Run the Python DHCP server with QT."""
 import os
 import signal
+import sys
+
+from simple_dhcp_server.configuration import DHCPServerConfiguration
+from simple_dhcp_server.host_database import Host
+from simple_dhcp_server.dhcp import DHCPServer
+
 try:
     import PySide6
 except ImportError:
@@ -10,9 +16,7 @@ from PySide6.QtGui import QIcon, QFont, QBrush, QColor
 from PySide6.QtCore import QTimer
 
 # Only needed for access to command line arguments
-import sys
 
-from simple_dhcp_server.dhcp import DHCPServer, DHCPServerConfiguration, Host
 
 HERE = os.path.dirname(__file__)
 ICON = os.path.join(HERE, "icon.ico")
@@ -24,9 +28,9 @@ class HostsTableWidget(QTableWidget):
     def __init__(self, *args):
         QTableWidget.__init__(self, 3, 1, *args)
         self.setColumnCount(3)
-        self.last_hosts : list[Host] = []
-        
-    def bgColor(self, host:Host) -> str:
+        self.last_hosts: list[Host] = []
+
+    def bgColor(self, host: Host) -> str:
         """Return the background color for the host."""
         if self.last_hosts is None:
             return "#ffffff"
@@ -39,12 +43,12 @@ class HostsTableWidget(QTableWidget):
         c = s[index]
         color = f"#ffff{c}{c}"
         return color
-    
-    def bgBrush(self, host:Host) -> QBrush:
+
+    def bgBrush(self, host: Host) -> QBrush:
         return QBrush(QColor(self.bgColor(host)))
- 
-    def updateHosts(self, hosts:list[Host]): 
-        time_sorted_hosts = list(reversed(sorted(hosts, key = lambda host: host.last_used)))
+
+    def updateHosts(self, hosts: list[Host]):
+        time_sorted_hosts = list(reversed(sorted(hosts, key=lambda host: host.last_used)))
         self.last_hosts = time_sorted_hosts
 
         style = ""
@@ -58,7 +62,7 @@ class HostsTableWidget(QTableWidget):
         self.resizeRowsToContents()
         self.setRowCount(len(hosts))
         self.setStyleSheet(style)
-        
+
     def get_item(self, host: Host, text: str) -> QTableWidgetItem:
         brush = self.bgBrush(host)
         item = QTableWidgetItem(text)
@@ -71,10 +75,9 @@ def main():
 
     app = QApplication(sys.argv)
 
-    
     configuration = DHCPServerConfiguration()
     configuration.debug = print
-    #configuration.adjust_if_this_computer_is_a_router()
+    # configuration.adjust_if_this_computer_is_a_router()
     config_file = os.path.join(HERE, THIS_CONFIG)
     if not os.path.exists(THIS_CONFIG):
         with open(config_file) as s:
@@ -87,7 +90,8 @@ def main():
     except PermissionError:
         # see https://stackoverflow.com/a/40227202
         error_dialog = QErrorMessage()
-        error_dialog.showMessage("No access to DHCP port 67.\nThe network port cannot be accessed. Run this program with sudo.")
+        error_dialog.showMessage(
+            "No access to DHCP port 67.\nThe network port cannot be accessed. Run this program with sudo.")
         app.exec()
         exit(1)
 
@@ -95,7 +99,7 @@ def main():
     window.show()
     window.setWindowTitle('MAC, IP & Computer')
     window.setWindowIcon(QIcon(ICON))
-    
+
     # font 
     # see https://stackoverflow.com/a/1835938
     font = QFont("Monospace")
@@ -106,8 +110,8 @@ def main():
     info.setMinimumHeight(60)
     window.setCentralWidget(info)
 
-
     last_time_sorted_hosts = None
+
     def update_text():
         nonlocal last_time_sorted_hosts
         hosts = server.get_all_hosts()
@@ -124,13 +128,13 @@ def main():
     timer.timeout.connect(update_text)
     timer.setInterval(100)
     timer.start()
-    
+
     info.show()
     update_text()
 
     app.exec()
     server.close()
 
+
 if __name__ == '__main__':
     main()
-
