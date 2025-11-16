@@ -1,14 +1,23 @@
 #!/usr/bin/python3
+import collections
+import logging
+import queue
+import socket
+import struct
+import threading
+import time
 import traceback
 from ssl import SOL_SOCKET
 
 from _socket import inet_aton, SO_REUSEADDR, SOCK_DGRAM, SO_BROADCAST
+from scapy.sendrecv import AsyncSniffer
 
 from simple_dhcp_server.decoders import WriteBootProtocolPacket, ReadBootProtocolPacket, get_host_ip_addresses
-from scapy.all import *
+from scapy.all import sniff, DHCP, BOOTP, IP
 
 from simple_dhcp_server.utils import get_interface_by_ip, ether_client_id
 
+log = logging.getLogger("simple_dhcp_server")
 
 class DelayWorker(object):
 
@@ -74,7 +83,7 @@ class Transaction(object):
     def received_dhcp_discover(self, discovery):
         if self.is_done():
             return
-        self.configuration.debug('discover:\n {}'.format(str(discovery).replace('\n', '\n\t')))
+        log.debug('discover:\n {}'.format(str(discovery).replace('\n', '\n\t')))
         self.send_offer(discovery)
 
     def send_offer(self, discovery):
@@ -149,8 +158,6 @@ class DHCPServerConfiguration(object):
 
     host_file = 'hosts.csv'
 
-    debug = lambda *args, **kw: None
-
     def load(self, file):
         with open(file) as f:
             exec(f.read(), self.__dict__)
@@ -184,7 +191,6 @@ class DHCPServerConfiguration(object):
 
 
 def ip_addresses(network, subnet_mask):
-    import socket, struct
     subnet_mask = struct.unpack('>I', socket.inet_aton(subnet_mask))[0]
     network = struct.unpack('>I', socket.inet_aton(network))[0]
     network = network & subnet_mask
@@ -351,25 +357,46 @@ class DHCPServer(object):
         self.hosts = HostDatabase(self.configuration.host_file)
         self.time_started = time.time()
 
-        self.configuration.debug(f"Binding to IP {self.configuration.bind_address}")
+        log.debug(f"Binding to IP {self.configuration.bind_address}")
         iface = get_interface_by_ip(self.configuration.bind_address)
-        self.configuration.debug(f"Using iface {iface}")
-        sniff(prn=self.packet_handler, filter="udp and port 67", store=1, iface=iface)
+        log.debug(f"Using iface {iface}")
+        self.sniffer = AsyncSniffer(
+            prn=self.packet_handler,
+            filter="udp and port 67",
+            store=False,  # sniffer.results unused
+            iface=iface
+        )
+
+    def start(self):
+        self.closed = False
+        self.sniffer.start()
 
     def close(self):
-        self.closed = True
-        self.delay_worker.close()
+        log.debug("Closing DHCP server...")
+
         for transaction in list(self.transactions.values()):
             transaction.close()
 
+        self.closed = True
+        self.delay_worker.close()
+
+        log.debug("Stopping packet sniffer...")
+        if self.sniffer is not None and getattr(self.sniffer, "running", False):
+            self.sniffer.stop()  # stops even if no packets are coming
+
+        log.debug("Waiting for delay worker thread to finish...")
+        #self.delay_worker.thread.join()
+
     def packet_handler(self, packet):
+        if self.closed:
+            return
         try:
             if packet.haslayer(DHCP) and packet[DHCP].options[0][1] == 1:  # DHCPDISCOVER
-                self.configuration.debug(f"DHCPDISCOVER packet received from {packet[IP].src}")
-            self.configuration.debug('received:\n {}'.format(str(packet).replace('\n', '\n\t')))
+                log.debug(f"DHCPDISCOVER packet received from {packet[IP].src}")
+            log.debug('received:\n {}'.format(str(packet).replace('\n', '\n\t')))
             packet_dec = ReadBootProtocolPacket(packet[BOOTP].original)
 
-            self.configuration.debug('Decoded:\n {}'.format(str(packet_dec).replace('\n', '\n\t')))
+            log.debug('Decoded:\n {}'.format(str(packet_dec).replace('\n', '\n\t')))
 
             self.received(packet_dec)
 
@@ -379,14 +406,14 @@ class DHCPServer(object):
                     self.transactions.pop(transaction_id)
 
         except:  # noqa acceptable
-            self.configuration.debug(traceback.format_exc())
+            log.debug(traceback.format_exc())
 
     def received(self, packet):
         if not self.transactions[packet.transaction_id].receive(packet):
-            self.configuration.debug('received:\n {}'.format(str(packet).replace('\n', '\n\t')))
+            log.debug('received:\n {}'.format(str(packet).replace('\n', '\n\t')))
 
     def client_has_chosen(self, packet):
-        self.configuration.debug('client_has_chosen:\n {}'.format(str(packet).replace('\n', '\n\t')))
+        log.debug('client_has_chosen:\n {}'.format(str(packet).replace('\n', '\n\t')))
         host = Host.from_packet(packet)
         if not host.has_valid_ip():
             return
@@ -411,11 +438,11 @@ class DHCPServer(object):
             for host in known_hosts:
                 if self.is_valid_client_address(host.ip):
                     ip = host.ip
-            self.configuration.debug('known ip:', ip)
+            log.debug(f'known ip: {ip}')
         if ip is None and self.is_valid_client_address(requested_ip_address) and ip not in assigned_addresses:
             # 2. choose valid requested ip address
             ip = requested_ip_address
-            self.configuration.debug('valid ip:', ip)
+            log.debug(f'valid ip: {ip}')
         if ip is None:
             # 3. choose new, free ip address
             chosen = False
@@ -429,9 +456,9 @@ class DHCPServer(object):
                 network_hosts.sort(key=lambda host: host.last_used)
                 ip = network_hosts[0].ip
                 assert self.is_valid_client_address(ip)
-            self.configuration.debug('new ip:', ip)
+            log.debug(f'new ip: {ip}')
         if not any([host.ip == ip for host in known_hosts]):
-            self.configuration.debug('add', mac_address, ip, packet.host_name)
+            log.debug(f'add {mac_address} {ip} {packet.host_name}')
             self.hosts.replace(Host(mac_address, ip, packet.host_name or '', time.time()))
         return ip
 
@@ -440,7 +467,7 @@ class DHCPServer(object):
         return get_host_ip_addresses()
 
     def broadcast(self, packet):
-        self.configuration.debug('broadcasting:\n {}'.format(str(packet).replace('\n', '\n\t')))
+        log.debug('broadcasting:\n {}'.format(str(packet).replace('\n', '\n\t')))
         for addr in self.server_identifiers:
             broadcast_socket = socket.socket(type=SOCK_DGRAM)
             broadcast_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -452,7 +479,7 @@ class DHCPServer(object):
                 broadcast_socket.sendto(data, ('255.255.255.255', 68))
                 broadcast_socket.sendto(data, (addr, 68))
             except:
-                self.configuration.debug(traceback.format_exc())
+                log.debug(traceback.format_exc())
             finally:
                 broadcast_socket.close()
 
@@ -460,7 +487,7 @@ class DHCPServer(object):
         for line in self.ips.all():
             line = '\t'.join(line)
             if line:
-                self.configuration.debug(line)
+                log.debug(line)
 
     def get_all_hosts(self):
         return sorted_hosts(self.hosts.get())
@@ -472,11 +499,17 @@ class DHCPServer(object):
 def main():
     """Run a DHCP server from the command line."""
     configuration = DHCPServerConfiguration()
-    configuration.debug = print
     configuration.adjust_if_this_computer_is_a_router()
     configuration.ip_address_lease_time = 60
     configuration.load_yaml("simple-dhcp-server-qt.yml")
     server = DHCPServer(configuration)
+    try:
+        server.start()
+        while True:
+            time.sleep(1)  # keep main thread alive
+    except KeyboardInterrupt:
+        server.close()
+
     for ip in server.configuration.all_ip_addresses():
         assert ip == server.configuration.network_filter()
 
