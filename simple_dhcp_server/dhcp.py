@@ -191,41 +191,8 @@ class DHCPServer(object):
             finally:
                 broadcast_socket.close()
 
-    def debug_clients(self):
-        for line in self.ips.all():
-            line = '\t'.join(line)
-            if line:
-                log.debug(line)
-
     def get_all_hosts(self):
         return sorted_hosts(self.hosts.get())
 
     def get_current_hosts(self):
         return sorted_hosts(self.hosts.get(last_used=GREATER(self.time_started)))
-
-    def release_ip(self, address: str):
-        """
-        Release the given IP address from DHCP.
-        """
-        raise NotImplementedError("Function is not working.")
-        # Find the host associated with the IP address
-        hosts_to_remove = [host for host in self.hosts.get() if host.ip == address]
-        if not hosts_to_remove:
-            log.debug(f"No host found with IP address {address} to release.")
-            return
-
-        host = hosts_to_remove[0]
-
-        # Construct the DHCPRELEASE packet
-        release_packet = WriteBootProtocolPacket(self.configuration)
-
-        release_packet.client_mac_address = host.mac  # Client MAC address in binary
-        release_packet.client_ip_address = host.ip  # Client IP address
-        release_packet.transaction_id = int(time.time())  # Transaction ID
-        release_packet.dhcp_message_type = 'DHCPRELEASE'
-        self.broadcast(release_packet)
-
-
-        # Remove the host from the database
-        self.hosts.delete(host)
-        log.debug(f"Released IP {address} and removed host {host.mac} from the database.")

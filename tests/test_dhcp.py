@@ -56,6 +56,15 @@ class NicControl:
             time.sleep(1)
         return None
 
+    def get_ip_if_unassigned(self, dhcp: DHCPServer):
+        ip = self.get_current_ip()
+
+        if ip in dhcp.hosts.get_all_by_type("ip"):
+            return
+
+        self.release()
+        self.renew()
+
 
 @pytest.fixture
 def nic_control():
@@ -93,24 +102,9 @@ def test_assign_ip(dhcp, nic_control):
     assert assigned_ip.startswith('192.168.137.')
 
 
-def test_dhcp_release_assinged_ip(dhcp, nic_control):
-    """Test that the DHCP server can release an assigned IP"""
-    nic_control.release()
-    nic_control.renew()
-    assigned_ip = nic_control.wait_ip_assigned(timeout=15)
-    print("Assigned IP: {}".format(assigned_ip))
-
-    dhcp.release_ip(assigned_ip)
-    with pytest.raises(AssertionError):
-        res = nic_control.wait_ip_assigned(timeout=0.5)
-        print("IP assigned after release: {}".format(res))
-    assert res != assigned_ip, "IP should not be assigned after release"
-
-
 def test_release_clear_host(dhcp, nic_control):
     """Test that when a DHCPRELEASE packet is received, the host is cleared"""
-    nic_control.release()
-    nic_control.renew()
+    nic_control.get_ip_if_unassigned(dhcp)
 
     # Check that at least one is connected
     assert len(dhcp.hosts.all()) == 1
@@ -121,10 +115,25 @@ def test_release_clear_host(dhcp, nic_control):
     assert len(dhcp.hosts.all()) == 0
 
 
-def test_re_lease(dhcp, nic_control):
-    """Test that after leasing period """
+def test_renew_lease(dhcp, nic_control):
+    """Test that before leasing period expire, client renews the IP"""
+    dhcp.configuration.ip_address_lease_time = 15
+    # I have to set the time rather high, Windows
     nic_control.release()
     nic_control.renew()
-    nic_control.release()
-    nic_control.renew()
+    # Save the timestamp from the host
+    timestamp = dhcp.hosts.all()[0].last_used
 
+    # Needs to wait T0 (lease time / 2)
+
+    print("Wait for new lease time(timestamp)")
+    timestamp2 = timestamp
+    t_start = time.time()
+    while time.time() - t_start < dhcp.configuration.ip_address_lease_time:
+        time.sleep(0.1)
+        timestamp2 = dhcp.hosts.all()[0].last_used
+        if timestamp2 != timestamp:
+            break
+
+    assert time.time() - t_start < dhcp.configuration.ip_address_lease_time
+    assert timestamp != timestamp2

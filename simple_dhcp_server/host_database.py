@@ -1,4 +1,5 @@
 import time
+from typing import Literal
 
 from simple_dhcp_server.utils import ALL
 
@@ -112,3 +113,7 @@ class HostDatabase(object):
         """Clears all assigned hosts"""
         for host in self.all():
             self.delete(host)
+
+    def get_all_by_type(self, item: Literal["mac", "ip", "hostname", "last_used"]):
+        """Get all item from the hosts of a type"""
+        return [getattr(host, item) for host in self.all()]
