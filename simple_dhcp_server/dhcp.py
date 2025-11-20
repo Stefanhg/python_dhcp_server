@@ -99,26 +99,6 @@ class DHCPServer(object):
             return
         self.hosts.replace(host)
 
-    def is_valid_client_address(self, address: None | str):
-        """
-        Check if the given address is a valid client address within the configured network.
-        Parameters
-        ----------
-        address : str
-            The IP address to check.
-            If None, returns False.
-        Returns
-        -------
-        bool :
-            True if the address is valid for a client, False otherwise.
-        """
-        if address is None:
-            return False
-        a = address.split('.')
-        s = self.configuration.subnet_mask.split('.')
-        n = self.configuration.network.split('.')
-        return all(s[i] == '0' or a[i] == n[i] for i in range(4))
-
     def get_ip_address(self, packet):
         """
         Determine the IP address to assign to the client based on the packet and known hosts.
@@ -141,30 +121,45 @@ class DHCPServer(object):
         known_hosts = self.hosts.get(mac=mac_address)
         assigned_addresses = set(host.ip for host in self.hosts.get())
         ip = None
+
+        # If IP already previously assigned in DHCP server, assign it to same Ip again.
         if known_hosts:
-            # 1. choose known ip address
             for host in known_hosts:
-                if self.is_valid_client_address(host.ip):
+                if self.configuration.is_valid_client_address(host.ip):
                     ip = host.ip
             log.debug(f'known ip: {ip}')
-        if ip is None and self.is_valid_client_address(requested_ip_address) and ip not in assigned_addresses:
-            # 2. choose valid requested ip address
+
+        # If ip is not already known, check if the requested IP is available
+        if ip is None and self.configuration.is_valid_client_address(requested_ip_address) and ip not in assigned_addresses:
             ip = requested_ip_address
             log.debug(f'valid ip: {ip}')
+
+        # If IP is not known or available, get an new IP
         if ip is None:
-            # 3. choose new, free ip address
             chosen = False
+
+            # Get devices already assigned
             network_hosts = self.hosts.get(ip=self.configuration.network_filter())
+
+            # Get all IP combinations
             for ip in self.configuration.all_ip_addresses():
                 if not any(host.ip == ip for host in network_hosts):
                     chosen = True
                     break
+
+            # Workaround for not having support for cleaning up the leased hosts.
+            # Todo make DHCP clean up old leases if expired and remove this.
             if not chosen:
-                # 4. reuse old valid ip address
+                log.info("NO more IPS available, reuses last used IP which may already be used")
+                if len(network_hosts) == 0:
+                    log.error("CONFIGURATION ERROR! No IPs has been assigned but no IPs was available.")
                 network_hosts.sort(key=lambda host: host.last_used)
                 ip = network_hosts[0].ip
-                assert self.is_valid_client_address(ip)
-            log.debug(f'new ip: {ip}')
+                if not self.configuration.is_valid_client_address(ip):
+                    raise Exception("Assigned IP is not valid")
+            else:
+                log.info(f"New IP assigned: {ip}")
+
         if not any([host.ip == ip for host in known_hosts]):
             log.debug(f'add {mac_address} {ip} {packet.host_name}')
             self.hosts.replace(Host(mac_address, ip, packet.host_name or '', time.time()))

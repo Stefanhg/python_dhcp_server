@@ -42,6 +42,36 @@ def is_ip_in_network(ip, network, subnet_mask):
 
 
 def ip_addresses(network, subnet_mask):
+    """
+    Generate all usable host IP addresses within a subnet.
+
+    This function computes the network and broadcast addresses by applying
+    the provided subnet mask to the given IP address, and then yields every
+    valid host address between them. The returned generator produces IPv4
+    addresses as strings. The network address (first address) and broadcast
+    address (last address) are excluded from the results.
+
+    Parameters
+    ----------
+    network : str
+        Any IPv4 address within the target subnet (e.g., "192.168.1.0" or
+        an address inside that subnet).
+    subnet_mask : str
+        The subnet mask for the target network (e.g., "255.255.255.0").
+
+    Returns
+    -------
+    generator of str
+        A generator yielding all usable host IP addresses within the subnet,
+        in ascending order.
+
+    Example
+    -------
+    >>> list(ip_addresses("192.168.1.10", "255.255.255.0"))
+    ['192.168.1.1', '192.168.1.2', ..., '192.168.1.254']
+    """
+
+    """Generates all usable Ips on """
     subnet_mask = struct.unpack('>I', socket.inet_aton(subnet_mask))[0]
     network = struct.unpack('>I', socket.inet_aton(network))[0]
     network = network & subnet_mask
@@ -85,3 +115,6 @@ def sorted_hosts(hosts):
     hosts = list(hosts)
     hosts.sort(key=lambda host: (host.hostname.lower(), host.mac.lower(), host.ip.lower()))
     return hosts
+
+def ip_to_int(ip: str) -> int:
+    return struct.unpack('>I', socket.inet_aton(ip))[0]
